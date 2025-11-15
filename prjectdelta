@@ -1,6 +1,6 @@
 local success, Rayfield = pcall(function() return loadstring(game:HttpGet('https://sirius.menu/rayfield'))() end)
 if not success or not Rayfield then error("Rayfield failed to load. Update the loader URL.") end
-pcall(function() Rayfield:ApplyTheme("Amethyst") Rayfield:LoadConfiguration() end)
+pcall(function() Rayfield:ApplyTheme("Ocean") Rayfield:LoadConfiguration() end)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
