@@ -1,0 +1,1081 @@
+local success, Rayfield = pcall(function() return loadstring(game:HttpGet('https://sirius.menu/rayfield'))() end)
+if not success or not Rayfield then error("Rayfield failed to load. Update the loader URL.") end
+pcall(function() Rayfield:ApplyTheme("Amethyst") Rayfield:LoadConfiguration() end)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local Stats = game:GetService("Stats")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Cam = Workspace.CurrentCamera
+local LP = Players.LocalPlayer
+
+local Config = {
+    ESP = false, ShowName = false, ShowDistance = false,
+    UseBox = false, UseTracer = false, UseHighlight = false,
+    TextColor = Color3.new(1,1,1), BoxColor = Color3.fromRGB(0,170,255),
+    TracerColor = Color3.fromRGB(0,255,140),
+    Friends = {}, FriendLabel = "Friend",
+    AimbotEnabled = false, LockPart = "Head", LockStrength = 1,
+    AimbotScale = 150,
+    FOVCircle = false, FOVRadius = 150, FOVRainbow = false,
+    Crosshair = false,
+    InventoryViewer = false,
+    ItemESP = false, ShowDeadItems = false,
+    DroppedItemsESP = false,
+    ShowKeycards = {}, ShowKeys = {},
+    Fullbright = false,
+    DrawStatsBox = false
+}
+
+local TEXT_SIZE = 16
+local Resources, ESPs, ItemDrawings = {}, {}, {}
+
+local function addResource(g,r)
+    Resources[g]=Resources[g] or {}
+    table.insert(Resources[g],r)
+end
+
+local function clearResources(g)
+    if not Resources[g] then return end
+    for _,r in ipairs(Resources[g]) do
+        pcall(function()
+            if typeof(r)=="RBXScriptConnection" then r:Disconnect()
+            elseif typeof(r)=="Instance" then r:Destroy()
+            elseif type(r)=="table" and r.Remove then r:Remove()
+            elseif type(r)=="function" then r() end
+        end)
+    end
+    Resources[g]=nil
+end
+
+local function NewText(size)
+    local t=Drawing.new("Text")
+    t.Size=size or 16
+    t.Center=true
+    t.Outline=true
+    t.Visible=false
+    t.Color = Color3.new(1,1,1)
+    return t
+end
+
+local function NewLine()
+    local l=Drawing.new("Line")
+    l.Thickness=1
+    l.Visible=false
+    return l
+end
+
+local function NewCircle()
+    local c=Drawing.new("Circle")
+    c.NumSides=64
+    c.Thickness=2
+    c.Visible=false
+    return c
+end
+
+local function NewBox()
+    local box = {}
+    for i=1,4 do
+        box[i] = NewLine()
+        box[i].Thickness = 2
+    end
+    return box
+end
+
+local function isFriend(plr)
+    for _,n in ipairs(Config.Friends) do
+        if plr.Name==n then return true end
+    end
+    return false
+end
+
+local function cleanupESPForPlayer(plr)
+    local esp = ESPs[plr]
+    if not esp then return end
+    if esp.highlight and esp.highlight.Parent then pcall(function() esp.highlight:Destroy() end) end
+    if esp.drawings then
+        for _,d in ipairs(esp.drawings) do
+            pcall(function() if d.Remove then d:Remove() end end)
+        end
+    end
+    ESPs[plr] = nil
+end
+
+local function setupCharacterESP(plr,char)
+    if plr==LP then return end
+    local hrp=char:WaitForChild("HumanoidRootPart",5)
+    local head=char:WaitForChild("Head",5)
+    local humanoid=char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not head or not humanoid then return end
+    local hl
+    if Config.UseHighlight then
+        hl = Instance.new("Highlight")
+        hl.Parent = char
+        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    end
+    local nameTxt,distTxt,friendTxt = NewText(TEXT_SIZE), NewText(TEXT_SIZE-2), NewText(TEXT_SIZE)
+    friendTxt.Color = Color3.new(0,1,0)
+    local box = NewBox()
+    local tracer = NewLine()
+    tracer.Thickness = 2
+    local drawings = {nameTxt, distTxt, friendTxt, tracer, unpack(box)}
+    local function hide()
+        for _,d in ipairs(drawings) do d.Visible=false end
+        if hl then hl.Enabled=false end
+    end
+    humanoid.Died:Connect(hide)
+    addResource("ESP", RunService.RenderStepped:Connect(function()
+        if not Config.ESP then hide() return end
+        if not char:IsDescendantOf(Workspace) then hide() return end
+        local friend = isFriend(plr)
+        local camPos = Cam.CFrame.Position
+        local dist = (hrp.Position-camPos).Magnitude
+        local scrHRP,onScreen = Cam:WorldToViewportPoint(hrp.Position)
+        local scrHead = Cam:WorldToViewportPoint(head.Position+Vector3.new(0,0.5,0))
+        local scrFeet = Cam:WorldToViewportPoint(hrp.Position-Vector3.new(0,3,0))
+        if not hl or not hl.Parent or hl.Parent ~= char or not hl:IsA("Highlight") then
+            pcall(function() if hl then hl:Destroy() end end)
+            hl = Instance.new("Highlight")
+            hl.Name = "ESP_Highlight"
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.Parent = char
+        end
+        if hl then
+            local fillColor = friend and Color3.new(0,1,0) or Config.BoxColor
+            if hl.FillColor ~= fillColor then
+                hl.FillColor = fillColor
+            end
+            if hl.OutlineColor ~= Color3.new(1,1,1) then
+                hl.OutlineColor = Color3.new(1,1,1)
+            end
+            local shouldEnable = Config.UseHighlight and onScreen
+            if hl.Enabled ~= shouldEnable then
+                hl.Enabled = shouldEnable
+            end
+        end
+        nameTxt.Visible = Config.ShowName and onScreen and not friend
+        if nameTxt.Visible then
+            nameTxt.Text = plr.Name
+            nameTxt.Position = Vector2.new(scrHead.X,scrHead.Y-TEXT_SIZE)
+            nameTxt.Color = Config.TextColor
+        end
+        friendTxt.Visible = friend and onScreen
+        if friendTxt.Visible then
+            friendTxt.Text = Config.FriendLabel
+            friendTxt.Position = Vector2.new(scrHead.X,scrHead.Y-TEXT_SIZE)
+        end
+        distTxt.Visible = Config.ShowDistance and onScreen
+        if distTxt.Visible then
+            distTxt.Text = math.floor(dist).." studs"
+            distTxt.Position = Vector2.new(scrFeet.X,scrFeet.Y+TEXT_SIZE/2)
+            distTxt.Color = Config.TextColor
+        end
+        for _,l in ipairs(box) do l.Visible=false end
+        if Config.UseBox and onScreen and not friend then
+            local h = math.abs(scrFeet.Y-scrHead.Y)
+            local w = h/2
+            local x1,y1 = scrHRP.X-w/2, scrHead.Y
+            local x2,y2 = x1+w, y1+h
+            box[1].From, box[1].To = Vector2.new(x1,y1), Vector2.new(x2,y1)
+            box[2].From, box[2].To = Vector2.new(x2,y1), Vector2.new(x2,y2)
+            box[3].From, box[3].To = Vector2.new(x2,y2), Vector2.new(x1,y2)
+            box[4].From, box[4].To = Vector2.new(x1,y2), Vector2.new(x1,y1)
+            for _,l in ipairs(box) do l.Color=Config.BoxColor l.Visible=true end
+        end
+        tracer.Visible = Config.UseTracer and not friend
+        if tracer.Visible then
+            local vp = Cam.ViewportSize
+            local function clampToScreen(v)
+                return Vector2.new(math.clamp(v.X, 0, vp.X), math.clamp(v.Y, 0, vp.Y))
+            end
+            tracer.From = Vector2.new(vp.X/2, vp.Y)
+            local toV2 = Vector2.new(scrHRP.X, scrHRP.Y)
+            tracer.To = onScreen and toV2 or clampToScreen(toV2)
+            tracer.Color = Config.TracerColor
+        end
+    end))
+    ESPs[plr] = {highlight=hl, drawings=drawings}
+end
+
+local function createESP(plr)
+    if plr==LP then return end
+    cleanupESPForPlayer(plr)
+    addResource("ESP", plr.CharacterAdded:Connect(function(c) setupCharacterESP(plr,c) end))
+    if plr.Character then task.defer(function() setupCharacterESP(plr,plr.Character) end) end
+end
+
+local function startESP()
+    clearResources("ESP")
+    ESPs={}
+    for _,p in ipairs(Players:GetPlayers()) do createESP(p) end
+    addResource("ESP", Players.PlayerAdded:Connect(createESP))
+    addResource("ESP", Players.PlayerRemoving:Connect(cleanupESPForPlayer))
+end
+
+local function stopESP()
+    for p,_ in pairs(ESPs) do cleanupESPForPlayer(p) end
+    clearResources("ESP")
+    ESPs={}
+end
+
+local savedLightingState
+local function toggleFullbright(state)
+    clearResources("FULLBRIGHT")
+    local white = Color3.fromRGB(255,255,255)
+    if state then
+        if not savedLightingState then
+            savedLightingState = {
+                Ambient = Lighting.Ambient,
+                OutdoorAmbient = (pcall(function() return Lighting.OutdoorAmbient end) and Lighting.OutdoorAmbient) or nil,
+            }
+        end
+        if Lighting.Ambient ~= white then Lighting.Ambient = white end
+        if savedLightingState.OutdoorAmbient ~= nil then
+            pcall(function()
+                if Lighting.OutdoorAmbient ~= white then Lighting.OutdoorAmbient = white end
+            end)
+        end
+        addResource("FULLBRIGHT", Lighting:GetPropertyChangedSignal("Ambient"):Connect(function()
+            if not Config.Fullbright then return end
+            if Lighting.Ambient ~= white then Lighting.Ambient = white end
+        end))
+        if savedLightingState.OutdoorAmbient ~= nil then
+            addResource("FULLBRIGHT", Lighting:GetPropertyChangedSignal("OutdoorAmbient"):Connect(function()
+                if not Config.Fullbright then return end
+                pcall(function()
+                    if Lighting.OutdoorAmbient ~= white then Lighting.OutdoorAmbient = white end
+                end)
+            end))
+        end
+    else
+        if savedLightingState then
+            if savedLightingState.Ambient then Lighting.Ambient = savedLightingState.Ambient end
+            if savedLightingState.OutdoorAmbient ~= nil then
+                pcall(function() Lighting.OutdoorAmbient = savedLightingState.OutdoorAmbient end)
+            end
+        end
+    end
+end
+
+local function getCurrentWeaponDrop()
+    local char = LP.Character
+    if not char then return nil end
+    local holding = char:FindFirstChild("Holding")
+    if not holding or not holding:IsA("ObjectValue") or not holding.Value then return nil end
+    local weaponName
+    if typeof(holding.Value) == "Instance" then
+        weaponName = holding.Value.Name
+    else
+        weaponName = tostring(holding.Value)
+    end
+    local ammoTypesFolder = ReplicatedStorage:FindFirstChild("AmmoTypes")
+    local itemsList = ReplicatedStorage:FindFirstChild("ItemsList")
+    if not ammoTypesFolder or not itemsList then return nil end
+    local weaponInstance = itemsList:FindFirstChild(weaponName)
+    if not weaponInstance then return nil end
+    local itemPropsFolder = weaponInstance:FindFirstChild("ItemProperties")
+    local sources = {weaponInstance}
+    if itemPropsFolder then table.insert(sources,itemPropsFolder) end
+    local selectedDrop
+    for _,ammoFolder in ipairs(ammoTypesFolder:GetChildren()) do
+        if ammoFolder:IsA("Folder") then
+            local ammoName = ammoFolder.Name
+            local matched = false
+            for _,src in ipairs(sources) do
+                if src and src:GetAttribute(ammoName) ~= nil then
+                    matched = true
+                    break
+                end
+            end
+            if matched then
+                local dropVal = ammoFolder:GetAttribute("PorjectileDrop") or ammoFolder:GetAttribute("ProjectileDrop")
+                if typeof(dropVal) == "number" then
+                    selectedDrop = dropVal
+                    break
+                end
+            end
+        end
+    end
+    return selectedDrop
+end
+
+local lockedTarget = nil
+
+local function getTarget()
+    local closest,cDist=nil,math.huge
+    local center=Vector2.new(Cam.ViewportSize.X/2, Cam.ViewportSize.Y/2)
+    local maxRadius = Config.FOVRadius
+    if not maxRadius or maxRadius <= 0 then
+        maxRadius = math.huge
+    end
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr==LP or not plr.Character then continue end
+        if isFriend(plr) then continue end
+        local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health<=0 then continue end
+        local tp=plr.Character:FindFirstChild(Config.LockPart) or plr.Character:FindFirstChild("HumanoidRootPart")
+        if not tp then continue end
+        local scr,on=Cam:WorldToViewportPoint(tp.Position)
+        if not on then continue end
+        local d=(Vector2.new(scr.X,scr.Y)-center).Magnitude
+        if d<maxRadius and d<cDist then closest,cDist=tp,d end
+    end
+    return closest
+end
+
+local function computeAimPosition(part)
+    local basePos = part.Position
+    local dropVal = getCurrentWeaponDrop()
+    if not dropVal then
+        return basePos
+    end
+    local camPos = Cam.CFrame.Position
+    local dist = (basePos - camPos).Magnitude
+    local correction = dropVal * (dist / 100)
+    return basePos + Vector3.new(0, correction, 0)
+end
+
+local function aimAt(part)
+    local camPos=Cam.CFrame.Position
+    local aimPos = computeAimPosition(part)
+    Cam.CFrame=Cam.CFrame:Lerp(CFrame.new(camPos,aimPos),Config.LockStrength)
+end
+
+local function startAimbot()
+    clearResources("AIMBOT")
+    local rmbDown=false
+    addResource("AIMBOT",RunService.RenderStepped:Connect(function()
+        if not Config.AimbotEnabled or not rmbDown then lockedTarget=nil return end
+        local tgt=getTarget()
+        lockedTarget=tgt
+        if lockedTarget and lockedTarget.Parent then aimAt(lockedTarget) end
+    end))
+    addResource("AIMBOT",UIS.InputBegan:Connect(function(i,g)
+        if g then return end
+        if i.UserInputType==Enum.UserInputType.MouseButton2 then rmbDown=true end
+    end))
+    addResource("AIMBOT",UIS.InputEnded:Connect(function(i,g)
+        if g then return end
+        if i.UserInputType==Enum.UserInputType.MouseButton2 then rmbDown=false lockedTarget=nil end
+    end))
+end
+
+local function stopAimbot()
+    lockedTarget=nil
+    clearResources("AIMBOT")
+end
+
+local fovCircle = NewCircle()
+fovCircle.Radius = Config.FOVRadius
+fovCircle.Position = Vector2.new(Cam.ViewportSize.X/2,Cam.ViewportSize.Y/2)
+addResource("FOV",RunService.RenderStepped:Connect(function()
+    fovCircle.Visible=Config.FOVCircle
+    if not fovCircle.Visible then return end
+    fovCircle.Radius=Config.FOVRadius
+    fovCircle.Position=Vector2.new(Cam.ViewportSize.X/2,Cam.ViewportSize.Y/2)
+    if Config.FOVRainbow then
+        local t=os.clock()*0.5
+        fovCircle.Color=Color3.fromHSV(t%1,1,1)
+    else
+        fovCircle.Color=Color3.fromRGB(255,255,255)
+    end
+end))
+
+local DroppedESP = { items = {} }
+local KnownPlayerNames = {}
+
+local function refreshKnownPlayers()
+    for _,p in ipairs(Players:GetPlayers()) do
+        KnownPlayerNames[p.Name] = true
+    end
+end
+
+local function clearDroppedDrawings()
+    for m,draw in pairs(DroppedESP.items) do
+        pcall(function() if draw and draw.Remove then draw:Remove() end end)
+        DroppedESP.items[m] = nil
+    end
+end
+
+local function trackModelIfMatches(m)
+    if not m or not m:IsA("Model") then return end
+    if not KnownPlayerNames[m.Name] then return end
+    if DroppedESP.items[m] then return end
+    local t = NewText(14)
+    t.Center = true
+    t.Text = "Drop: "..m.Name
+    t.Color = Color3.new(1,1,1)
+    DroppedESP.items[m] = t
+    addResource("DROPPED_ESP", m.AncestryChanged:Connect(function()
+        if not m:IsDescendantOf(Workspace) then
+            local d = DroppedESP.items[m]
+            if d then pcall(function() if d.Remove then d:Remove() end end) end
+            DroppedESP.items[m] = nil
+        end
+    end))
+end
+
+local function startDroppedItemsESP()
+    clearResources("DROPPED_ESP")
+    refreshKnownPlayers()
+    addResource("DROPPED_ESP", Players.PlayerAdded:Connect(function(p)
+        KnownPlayerNames[p.Name] = true
+    end))
+    addResource("DROPPED_ESP", Players.PlayerRemoving:Connect(function(p)
+        KnownPlayerNames[p.Name] = true
+    end))
+    local function hookFolder(folder)
+        if not folder then return end
+        for _,child in ipairs(folder:GetChildren()) do trackModelIfMatches(child) end
+        addResource("DROPPED_ESP", folder.ChildAdded:Connect(function(ch)
+            trackModelIfMatches(ch)
+        end))
+    end
+    local folder = Workspace:FindFirstChild("DroppedItems")
+    if folder then
+        hookFolder(folder)
+    else
+        addResource("DROPPED_ESP", Workspace.ChildAdded:Connect(function(ch)
+            if ch.Name == "DroppedItems" then hookFolder(ch) end
+        end))
+    end
+    addResource("DROPPED_ESP", RunService.RenderStepped:Connect(function()
+        if not Config.DroppedItemsESP then
+            for _,d in pairs(DroppedESP.items) do d.Visible=false end
+            return
+        end
+        for m,d in pairs(DroppedESP.items) do
+            local cf = m:GetPivot()
+            local v, on = Cam:WorldToViewportPoint(cf.Position)
+            if on then
+                d.Position = Vector2.new(v.X, v.Y - 12)
+                d.Visible = true
+            else
+                d.Visible = false
+            end
+        end
+    end))
+end
+
+local function stopDroppedItemsESP()
+    clearResources("DROPPED_ESP")
+    clearDroppedDrawings()
+end
+
+local LandmineESP = { items = {} }
+
+local function startLandmineESP()
+    clearResources("LANDMINE_ESP")
+    local aiZones = Workspace:FindFirstChild("AiZones")
+    local folder = aiZones and aiZones:FindFirstChild("OutpostLandmines")
+    if not folder then return end
+    addResource("LANDMINE_ESP", RunService.RenderStepped:Connect(function()
+        if not Config.ESP then
+            for _,t in pairs(LandmineESP.items) do t.Visible=false end
+            return
+        end
+        for m,t in pairs(LandmineESP.items) do
+            if not m or not m.Parent then
+                if t.Remove then t:Remove() end
+                LandmineESP.items[m] = nil
+            end
+        end
+        for _,m in ipairs(folder:GetChildren()) do
+            if m:IsA("Model") and m.PrimaryPart then
+                if not LandmineESP.items[m] then
+                    local text = NewText(15)
+                    text.Color = Color3.fromRGB(255,80,80)
+                    LandmineESP.items[m] = text
+                end
+                local t = LandmineESP.items[m]
+                local pos = m.PrimaryPart.Position
+                local v,on = Cam:WorldToViewportPoint(pos)
+                if on then
+                    local studsDist = (pos - Cam.CFrame.Position).Magnitude
+                    local meters = studsDist * 0.28
+                    if meters <= 30 then
+                        t.Text = ("[TAPOSOAKNA] [%.1fm]"):format(meters)
+                        t.Position = Vector2.new(v.X, v.Y - 10)
+                        t.Visible = true
+                    else
+                        t.Visible = false
+                    end
+                else
+                    t.Visible = false
+                end
+            end
+        end
+    end))
+end
+
+local function stopLandmineESP()
+    clearResources("LANDMINE_ESP")
+    for _,t in pairs(LandmineESP.items) do if t.Remove then t:Remove() end end
+    LandmineESP.items = {}
+end
+
+local Window = Rayfield:CreateWindow({
+    Name = "ESP & Aimbot Menu",
+    LoadingTitle = "ESP/Aimbot Loader",
+    LoadingSubtitle = "by Script",
+    ConfigurationSaving = {Enabled = true, FolderName = "ESPUI", FileName = "Settings"},
+    KeySystem = false
+})
+
+local ESP_Tab = Window:CreateTab("ESP","eye")
+
+ESP_Tab:CreateDivider()
+ESP_Tab:CreateToggle({
+    Name="Enable ESP",
+    CurrentValue=false,
+    Flag="ESP_Main",
+    Callback=function(v)
+        Config.ESP=v
+        if v then startESP() else stopESP() end
+    end
+})
+
+ESP_Tab:CreateDivider()
+ESP_Tab:CreateToggle({Name="Boxes",CurrentValue=false,Flag="ESP_Boxes",Callback=function(v) Config.UseBox=v end})
+ESP_Tab:CreateToggle({Name="Tracers",CurrentValue=false,Flag="ESP_Tracers",Callback=function(v) Config.UseTracer=v end})
+ESP_Tab:CreateToggle({Name="Highlights",CurrentValue=false,Flag="ESP_Highlight",Callback=function(v) Config.UseHighlight=v end})
+ESP_Tab:CreateToggle({Name="Show Names",CurrentValue=false,Flag="ESP_Names",Callback=function(v) Config.ShowName=v end})
+ESP_Tab:CreateToggle({Name="Show Distance",CurrentValue=false,Flag="ESP_Distance",Callback=function(v) Config.ShowDistance=v end})
+
+ESP_Tab:CreateDivider()
+ESP_Tab:CreateLabel("Environment ESP")
+ESP_Tab:CreateToggle({
+    Name="Dropped Items ESP",
+    CurrentValue=false,
+    Flag="ESP_DroppedItems",
+    Callback=function(v)
+        Config.DroppedItemsESP = v
+        if v then startDroppedItemsESP() else stopDroppedItemsESP() end
+    end
+})
+ESP_Tab:CreateToggle({
+    Name="Landmine ESP (≤30m)",
+    CurrentValue=false,
+    Flag="ESP_Landmine",
+    Callback=function(v)
+        if v then startLandmineESP() else stopLandmineESP() end
+    end
+})
+
+local INV_enabled=false
+local INV={bg=nil,lines={},dragging=false,offset=Vector2.new(),pos=Vector2.new(200,200)}
+
+local function makeText(size)
+    local t=Drawing.new("Text")
+    t.Size=size or 18
+    t.Center=false
+    t.Outline=false
+    t.Color=Color3.new(1,1,1)
+    t.Visible=false
+    return t
+end
+
+local function ensureINV()
+    if INV.bg then return end
+    INV.bg=Drawing.new("Square")
+    INV.bg.Visible=false
+    INV.bg.Filled=true
+    INV.bg.Color=Color3.fromRGB(15,15,15)
+    INV.bg.Transparency=0.85
+    for i=1,4 do
+        INV.lines[i]=makeText(20)
+    end
+end
+
+ESP_Tab:CreateDivider()
+ESP_Tab:CreateLabel("Inventory Viewer")
+ESP_Tab:CreateToggle({
+    Name="Inventory Viewer",
+    CurrentValue=false,
+    Flag="INV_View",
+    Callback=function(v)
+        INV_enabled=v
+        if not v then
+            if INV.bg then INV.bg.Visible=false end
+            for _,t in ipairs(INV.lines) do t.Visible=false end
+        else
+            ensureINV()
+        end
+    end
+})
+
+ESP_Tab:CreateDivider()
+ESP_Tab:CreateInput({
+    Name="Friends (comma separated)",
+    PlaceholderText="Friend1,Friend2",
+    RemoveTextAfterFocusLost=false,
+    Flag="ESP_Friends",
+    Callback=function(txt)
+        local t={}
+        for name in string.gmatch(txt,"([^,]+)") do
+            name=name:gsub("%s+","")
+            if name~="" then table.insert(t,name) end
+        end
+        Config.Friends=t
+    end
+})
+ESP_Tab:CreateInput({
+    Name="Friend Label Text",
+    PlaceholderText="Friend",
+    RemoveTextAfterFocusLost=false,
+    Flag="ESP_FriendLabel",
+    Callback=function(txt) Config.FriendLabel=txt end
+})
+ESP_Tab:CreateDivider()
+ESP_Tab:CreateColorPicker({Name="Text Color",Color=Config.TextColor,Flag="ESP_TextColor",Callback=function(c) Config.TextColor=c end})
+ESP_Tab:CreateColorPicker({Name="Box Color",Color=Config.BoxColor,Flag="ESP_BoxColor",Callback=function(c) Config.BoxColor=c end})
+ESP_Tab:CreateColorPicker({Name="Tracer Color",Color=Config.TracerColor,Flag="ESP_TracerColor",Callback=function(c) Config.TracerColor=c end})
+
+local AIM_Tab = Window:CreateTab("Aimbot","target")
+AIM_Tab:CreateDivider()
+AIM_Tab:CreateToggle({
+    Name="Enable Aimbot (Right-click)",
+    CurrentValue=false,
+    Flag="AIM_Main",
+    Callback=function(v)
+        Config.AimbotEnabled=v
+        if v then startAimbot() else stopAimbot() end
+    end
+})
+AIM_Tab:CreateDropdown({
+    Name="Lock Part",
+    Options={"Head","Torso","HumanoidRootPart"},
+    CurrentOption={Config.LockPart},
+    Flag="AIM_Part",
+    Callback=function(opt) Config.LockPart = type(opt)=="table" and opt[1] or opt end
+})
+AIM_Tab:CreateSlider({
+    Name="Lock Strength",
+    Range={0,1},
+    Increment=0.01,
+    CurrentValue=Config.LockStrength,
+    Flag="AIM_Strength",
+    Callback=function(v) Config.LockStrength=v end
+})
+AIM_Tab:CreateDivider()
+AIM_Tab:CreateToggle({Name="Show FOV Circle",CurrentValue=false,Flag="AIM_FOV",Callback=function(v) Config.FOVCircle=v end})
+AIM_Tab:CreateToggle({Name="Rainbow FOV",CurrentValue=false,Flag="AIM_FOVR",Callback=function(v) Config.FOVRainbow=v end})
+AIM_Tab:CreateSlider({Name="FOV Radius",Range={50,400},Increment=1,CurrentValue=Config.FOVRadius,Flag="AIM_FOVRad",Callback=function(v) Config.FOVRadius=v end})
+
+local EXTRA_Tab = Window:CreateTab("Extras","sparkles")
+EXTRA_Tab:CreateDivider()
+EXTRA_Tab:CreateToggle({Name="Fullbright",CurrentValue=false,Flag="EXTRA_Fullbright",Callback=function(v) Config.Fullbright=v toggleFullbright(v) end})
+EXTRA_Tab:CreateDivider()
+EXTRA_Tab:CreateToggle({Name="Stats Box (Drawing)",CurrentValue=false,Flag="EXTRA_StatsBox",Callback=function(v) Config.DrawStatsBox = v end})
+
+local statsBox = { lines = nil, text = nil, bg = nil }
+
+local function ensureStatsBox()
+    if statsBox.lines and statsBox.text and statsBox.bg then return end
+    local box = {}
+    for i=1,4 do
+        box[i] = NewLine()
+        box[i].Thickness = 2
+    end
+    local t = Drawing.new("Text")
+    t.Size = 16
+    t.Center = false
+    t.Visible = false
+    t.Color = Color3.new(1,1,1)
+    t.Outline = true
+    t.OutlineColor = Color3.new(0,0,0)
+    local bg = Drawing.new("Square")
+    bg.Visible = false
+    bg.Filled = true
+    bg.Color = Color3.fromRGB(20,20,20)
+    bg.Transparency = 0.85
+    statsBox.lines, statsBox.text, statsBox.bg = box, t, bg
+end
+
+local function hideStatsBox()
+    if statsBox.lines then for _,l in ipairs(statsBox.lines) do l.Visible=false end end
+    if statsBox.text then statsBox.text.Visible=false end
+    if statsBox.bg then statsBox.bg.Visible=false end
+end
+
+local function toggleStatsBox(state)
+    clearResources("STATSBOX")
+    if not state then hideStatsBox() return end
+    ensureStatsBox()
+    local updateInterval = 0.5
+    local nextUpdate = 0
+    local frameCount, accTime = 0, 0
+    local contentCache = ""
+    addResource("STATSBOX", RunService.RenderStepped:Connect(function(dt)
+        if not Config.DrawStatsBox then hideStatsBox() return end
+        local padding = 8
+        local x, y = 20, 30
+        frameCount += 1
+        accTime += dt
+        local now = os.clock()
+        if now >= nextUpdate then
+            local avgFps = frameCount / math.max(accTime, 1e-6)
+            local fpsText = ("FPS: %d"):format(math.floor(avgFps + 0.5))
+            local pingMs = 0
+            local ok, stat = pcall(function() return Stats.Network.ServerStatsItem["Data Ping"] end)
+            if ok and stat and stat.GetValueString then
+                local str = stat:GetValueString() or "0 ms"
+                pingMs = tonumber(string.match(str, "(%d+)") or 0) or 0
+            end
+            local pingText = ("Ping: %d ms"):format(pingMs)
+            local cur = #Players:GetPlayers()
+            local max = Players.MaxPlayers or 0
+            local playersText = ("Players: %d/%d"):format(cur, max)
+            contentCache = table.concat({fpsText, pingText, playersText}, " | ")
+            frameCount, accTime = 0, 0
+            nextUpdate = now + updateInterval
+        end
+        local t = statsBox.text
+        t.Text = contentCache
+        t.Position = Vector2.new(x + padding, y + padding)
+        t.Visible = true
+        local approxCharW = 7
+        local w = math.max(180, #tostring(contentCache) * approxCharW + padding*2)
+        local h = 24 + padding*2
+        local x1, y1 = x, y
+        local x2, y2 = x + w, y + h
+        local bg = statsBox.bg
+        if bg then
+            bg.Position = Vector2.new(x1, y1)
+            bg.Size = Vector2.new(w, h)
+            bg.Visible = true
+        end
+        local hue = (os.clock() * 0.5) % 1
+        local col = Color3.fromHSV(hue, 1, 1)
+        local box = statsBox.lines
+        box[1].From, box[1].To = Vector2.new(x1, y1), Vector2.new(x2, y1)
+        box[2].From, box[2].To = Vector2.new(x2, y1), Vector2.new(x2, y2)
+        box[3].From, box[3].To = Vector2.new(x2, y2), Vector2.new(x1, y2)
+        box[4].From, box[4].To = Vector2.new(x1, y2), Vector2.new(x1, y1)
+        for _,l in ipairs(box) do l.Color = col l.Visible = true end
+    end))
+end
+
+addResource("STATSBOX_UI", RunService.RenderStepped:Connect(function()
+    if Config.DrawStatsBox then
+        toggleStatsBox(true)
+        clearResources("STATSBOX_UI")
+    end
+end))
+
+addResource("DROPPED_ESP_DISTANCE", RunService.RenderStepped:Connect(function()
+    if not Config.DroppedItemsESP then return end
+    for m,d in pairs(DroppedESP.items) do
+        local cf = m:GetPivot()
+        local v,on = Cam:WorldToViewportPoint(cf.Position)
+        if on then
+            local dist = (cf.Position - Cam.CFrame.Position).Magnitude
+            d.Text = ("Corpse: %s [%dm]"):format(m.Name, math.floor(dist))
+            d.Position = Vector2.new(v.X, v.Y - 12)
+            d.Visible = true
+        else
+            d.Visible = false
+        end
+    end
+end))
+
+local function drawInventory(plr)
+    local folder=ReplicatedStorage:FindFirstChild("Players")
+    if not folder then return end
+    local pf=folder:FindFirstChild(plr.Name)
+    if not pf or not pf:FindFirstChild("Inventory") then
+        if INV.bg then INV.bg.Visible=false end
+        for _,t in ipairs(INV.lines) do t.Visible=false end
+        return
+    end
+    local inv=pf.Inventory
+    local slots={"ItemBack1","ItemBack2","ItemHip1"}
+    local display={"Inventory: "..plr.Name}
+    for _,slotName in ipairs(slots) do
+        for _,obj in ipairs(inv:GetChildren()) do
+            if obj:IsA("ObjectValue") and obj:GetAttribute("Slot")==slotName then
+                local name=obj.Name
+                local dur=obj:GetAttribute("Durability")
+                local max=obj:GetAttribute("MaxDurability")
+                if max and dur and dur<=0 then
+                    name=name.." [BROKE]"
+                end
+                table.insert(display,name)
+                break
+            end
+        end
+    end
+    local count=#display
+    if count==0 then
+        if INV.bg then INV.bg.Visible=false end
+        for _,t in ipairs(INV.lines) do t.Visible=false end
+        return
+    end
+    local x,y=INV.pos.X,INV.pos.Y
+    local w,h=260,40+count*22
+    INV.bg.Position=Vector2.new(x,y)
+    INV.bg.Size=Vector2.new(w,h)
+    INV.bg.Visible=true
+    for i=#INV.lines+1,count do table.insert(INV.lines,makeText(18)) end
+    for i,t in ipairs(INV.lines) do
+        if i<=count then
+            local txt=display[i]
+            if txt:find("%[BROKE%]") then
+                t.Color=Color3.fromRGB(255,50,50)
+            elseif i==1 then
+                t.Color=Color3.fromRGB(0,255,255)
+            else
+                t.Color=Color3.new(1,1,1)
+            end
+            t.Text=txt
+            t.Position=Vector2.new(x+15,y+25+i*20)
+            t.Visible=true
+        else
+            t.Visible=false
+        end
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    if not INV_enabled then return end
+    ensureINV()
+    local mouse=LP:GetMouse()
+    if UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        local mpos=Vector2.new(mouse.X,mouse.Y)
+        if not INV.dragging and INV.bg.Visible and mpos.X>=INV.pos.X and mpos.X<=INV.pos.X+280 and mpos.Y>=INV.pos.Y and mpos.Y<=INV.pos.Y+120 then
+            INV.dragging=true
+            INV.offset=mpos-INV.pos
+        end
+        if INV.dragging then INV.pos=mpos-INV.offset end
+    else
+        INV.dragging=false
+    end
+    local origin=Cam.CFrame.Position
+    local dir=(mouse.Hit.Position-origin).Unit
+    local closest=nil
+    local minDist=2
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p==LP or not p.Character then continue end
+        local root=p.Character:FindFirstChild("HumanoidRootPart")
+        local hum=p.Character:FindFirstChildOfClass("Humanoid")
+        if root and hum then
+            local rel=root.Position-origin
+            local proj=rel:Dot(dir)
+            if proj>0 then
+                local closestPoint=origin+(dir*proj)
+                local dist=(root.Position-closestPoint).Magnitude
+                if dist<minDist then
+                    minDist=dist
+                    closest=p
+                end
+            end
+        end
+    end
+    if not closest then
+        if INV.bg then INV.bg.Visible=false end
+        for _,t in ipairs(INV.lines) do t.Visible=false end
+        return
+    end
+    drawInventory(closest)
+end)
+local kisfiu_Tab = Window:CreateTab("kisfiu","eye")
+
+kisfiu_Tab:CreateSlider({
+    Name = "FOV",
+    Range = {50,120},
+    Increment = 1,
+    CurrentValue = 70,
+    Flag = "kisfiu_FOV",
+    Callback = function(v)
+        local plrFolder = ReplicatedStorage:WaitForChild("Players"):FindFirstChild(LP.Name)
+        if not plrFolder then return end
+        local settings = plrFolder:WaitForChild("Settings")
+        local g = settings:WaitForChild("GameplaySettings")
+        g:SetAttribute("DefaultFOV",v)
+    end
+})
+
+local function getEquippedGun()
+    local char = LP.Character
+    if not char then return nil end
+    local holding = char:FindFirstChild("Holding")
+    if not holding or not holding.Value then return nil end
+    local gunName = tostring(holding.Value)
+    local itemsList = ReplicatedStorage:FindFirstChild("ItemsList")
+    if not itemsList then return nil end
+    return itemsList:FindFirstChild(gunName)
+end
+
+local function getWeaponDisplayName(gun)
+    if not gun then return nil end
+    local n = gun.Name
+    n = n:gsub("Front","")
+    n = n:gsub("Handle","")
+    return n
+end
+
+local function getAllSkinsForGun(gun)
+    local skinsFolder = ReplicatedStorage:FindFirstChild("Skins")
+    if not skinsFolder or not gun then return {} end
+    local base = gun.Name
+    local weaponBase = base:gsub("Front",""):gsub("Handle","")
+    local out = {}
+    for _,f in ipairs(skinsFolder:GetChildren()) do
+        if f:IsA("Folder") and f.Name:find(weaponBase) then
+            for _,skin in ipairs(f:GetChildren()) do
+                if skin:IsA("Folder") then
+                    table.insert(out,skin.Name)
+                end
+            end
+        end
+    end
+    return out
+end
+
+local function applySkinToBoth(gunInstance, skin)
+    if not gunInstance or not skin then return end
+    
+    local props = gunInstance:FindFirstChild("ItemProperties")
+    if not props then
+        props = Instance.new("Folder")
+        props.Name = "ItemProperties"
+        props.Parent = gunInstance
+    end
+    if props:GetAttribute("Skin") == nil then
+        props:SetAttribute("Skin", "")
+    end
+    props:SetAttribute("Skin", skin)
+
+    local players = ReplicatedStorage:WaitForChild("Players")
+    local pf = players:FindFirstChild(LP.Name)
+    if not pf then return end
+
+    local inv = pf:FindFirstChild("Inventory")
+    if not inv then return end
+
+    for _,obj in ipairs(inv:GetChildren()) do
+        if obj:IsA("ObjectValue") and obj.Value and obj.Value.Name == gunInstance.Name then
+            if obj:GetAttribute("Skin") == nil then
+                obj:SetAttribute("Skin", "")
+            end
+            obj:SetAttribute("Skin", skin)
+        end
+    end
+end
+
+local equippedGun = getEquippedGun()
+local equippedName = equippedGun and getWeaponDisplayName(equippedGun) or "No weapon"
+
+local weaponOptions = {equippedName}
+local skinOptions = equippedGun and getAllSkinsForGun(equippedGun) or {}
+if #skinOptions == 0 then skinOptions = {"No skins"} end
+
+local Weapon_DD = EXTRA_Tab:CreateDropdown({
+    Name = "Equipped Weapon",
+    Options = weaponOptions,
+    CurrentOption = {equippedName},
+    Flag = "SK_Weapon",
+    Callback = function(_) end
+})
+
+local Skin_DD = EXTRA_Tab:CreateDropdown({
+    Name = "Skin",
+    Options = skinOptions,
+    CurrentOption = {skinOptions[1]},
+    Flag = "SK_Select",
+    Callback = function(opt)
+        local picked = opt
+        if type(picked)=="table" then picked = picked[1] end
+        if not equippedGun then return end
+        if picked=="No skins" or picked=="No weapon equipped" then return end
+        applySkinToBoth(equippedGun,picked)
+    end
+})
+
+local function getSavedSkin(gun)
+    if not gun then return nil end
+    
+    local props = gun:FindFirstChild("ItemProperties")
+    if props and props:GetAttribute("Skin") then
+        return props:GetAttribute("Skin")
+    end
+
+    local players = ReplicatedStorage:WaitForChild("Players")
+    local pf = players:FindFirstChild(LP.Name)
+    if not pf then return nil end
+    local inv = pf:FindFirstChild("Inventory")
+    if not inv then return nil end
+
+    for _,obj in ipairs(inv:GetChildren()) do
+        if obj:IsA("ObjectValue") and obj.Value and obj.Value.Name == gun.Name then
+            return obj:GetAttribute("Skin")
+        end
+    end
+    return nil
+end
+
+local function updateEquippedWeaponUI()
+    equippedGun = getEquippedGun()
+    
+    local name = equippedGun and getWeaponDisplayName(equippedGun) or "No weapon"
+    local wOpts = {name}
+
+    Weapon_DD:Refresh(wOpts)
+    Weapon_DD:Set({name})
+
+    local sOpts
+    if equippedGun then
+        sOpts = getAllSkinsForGun(equippedGun)
+        if #sOpts == 0 then sOpts = {"No skins"} end
+    else
+        sOpts = {"No weapon equipped"}
+    end
+
+    Skin_DD:Refresh(sOpts)
+
+    local saved = getSavedSkin(equippedGun)
+    if saved and table.find(sOpts, saved) then
+        Skin_DD:Set({saved})
+    else
+        Skin_DD:Set({sOpts[1]})
+    end
+end
+
+RunService.Heartbeat:Connect(function()
+    local g = getEquippedGun()
+    if g ~= equippedGun then
+        updateEquippedWeaponUI()
+    end
+end)
+
+local descPool = {
+    "cigany killer",
+    "king von's most favoured gun",
+    "niggas desparet for this",
+    "dildo",
+}
+
+local function randomizeDescriptions()
+    local items = ReplicatedStorage:WaitForChild("ItemsList")
+    for _,sv in ipairs(items:GetChildren()) do
+        if sv:IsA("StringValue") then
+            local props = sv:FindFirstChild("ItemProperties")
+            if props then
+                local pick = descPool[math.random(1,#descPool)]
+                props:SetAttribute("Description",pick)
+            end
+        end
+    end
+end
+
+randomizeDescriptions()
+
+task.spawn(function()
+    while true do
+        task.wait(600)
+        randomizeDescriptions()
+    end
+end)
