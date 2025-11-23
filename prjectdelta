@@ -23,6 +23,7 @@ local Config = {
     FOVCircle = false, FOVRadius = 150, FOVRainbow = false,
     Crosshair = false,
     InventoryViewer = false,
+    InventoryInDepth = false,
     ItemESP = false, ShowDeadItems = false,
     DroppedItemsESP = false,
     ShowKeycards = {}, ShowKeys = {},
@@ -110,32 +111,39 @@ local function setupCharacterESP(plr,char)
     local head=char:WaitForChild("Head",5)
     local humanoid=char:FindFirstChildOfClass("Humanoid")
     if not hrp or not head or not humanoid then return end
+
     local hl
     if Config.UseHighlight then
         hl = Instance.new("Highlight")
         hl.Parent = char
         hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     end
+
     local nameTxt,distTxt,friendTxt = NewText(TEXT_SIZE), NewText(TEXT_SIZE-2), NewText(TEXT_SIZE)
     friendTxt.Color = Color3.new(0,1,0)
     local box = NewBox()
     local tracer = NewLine()
     tracer.Thickness = 2
     local drawings = {nameTxt, distTxt, friendTxt, tracer, unpack(box)}
+
     local function hide()
         for _,d in ipairs(drawings) do d.Visible=false end
         if hl then hl.Enabled=false end
     end
+
     humanoid.Died:Connect(hide)
+
     addResource("ESP", RunService.RenderStepped:Connect(function()
         if not Config.ESP then hide() return end
         if not char:IsDescendantOf(Workspace) then hide() return end
+
         local friend = isFriend(plr)
         local camPos = Cam.CFrame.Position
         local dist = (hrp.Position-camPos).Magnitude
         local scrHRP,onScreen = Cam:WorldToViewportPoint(hrp.Position)
         local scrHead = Cam:WorldToViewportPoint(head.Position+Vector3.new(0,0.5,0))
         local scrFeet = Cam:WorldToViewportPoint(hrp.Position-Vector3.new(0,3,0))
+
         if not hl or not hl.Parent or hl.Parent ~= char or not hl:IsA("Highlight") then
             pcall(function() if hl then hl:Destroy() end end)
             hl = Instance.new("Highlight")
@@ -143,37 +151,37 @@ local function setupCharacterESP(plr,char)
             hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
             hl.Parent = char
         end
+
         if hl then
             local fillColor = friend and Color3.new(0,1,0) or Config.BoxColor
-            if hl.FillColor ~= fillColor then
-                hl.FillColor = fillColor
-            end
-            if hl.OutlineColor ~= Color3.new(1,1,1) then
-                hl.OutlineColor = Color3.new(1,1,1)
-            end
+            if hl.FillColor ~= fillColor then hl.FillColor = fillColor end
+            if hl.OutlineColor ~= Color3.new(1,1,1) then hl.OutlineColor = Color3.new(1,1,1) end
             local shouldEnable = Config.UseHighlight and onScreen
-            if hl.Enabled ~= shouldEnable then
-                hl.Enabled = shouldEnable
-            end
+            if hl.Enabled ~= shouldEnable then hl.Enabled = shouldEnable end
         end
+
         nameTxt.Visible = Config.ShowName and onScreen and not friend
         if nameTxt.Visible then
             nameTxt.Text = plr.Name
             nameTxt.Position = Vector2.new(scrHead.X,scrHead.Y-TEXT_SIZE)
             nameTxt.Color = Config.TextColor
         end
+
         friendTxt.Visible = friend and onScreen
         if friendTxt.Visible then
             friendTxt.Text = Config.FriendLabel
             friendTxt.Position = Vector2.new(scrHead.X,scrHead.Y-TEXT_SIZE)
         end
+
         distTxt.Visible = Config.ShowDistance and onScreen
         if distTxt.Visible then
             distTxt.Text = math.floor(dist).." studs"
             distTxt.Position = Vector2.new(scrFeet.X,scrFeet.Y+TEXT_SIZE/2)
             distTxt.Color = Config.TextColor
         end
+
         for _,l in ipairs(box) do l.Visible=false end
+
         if Config.UseBox and onScreen and not friend then
             local h = math.abs(scrFeet.Y-scrHead.Y)
             local w = h/2
@@ -185,6 +193,7 @@ local function setupCharacterESP(plr,char)
             box[4].From, box[4].To = Vector2.new(x1,y2), Vector2.new(x1,y1)
             for _,l in ipairs(box) do l.Color=Config.BoxColor l.Visible=true end
         end
+
         tracer.Visible = Config.UseTracer and not friend
         if tracer.Visible then
             local vp = Cam.ViewportSize
@@ -197,8 +206,9 @@ local function setupCharacterESP(plr,char)
             tracer.Color = Config.TracerColor
         end
     end))
+
     ESPs[plr] = {highlight=hl, drawings=drawings}
-end
+end)
 
 local function createESP(plr)
     if plr==LP then return end
@@ -206,7 +216,6 @@ local function createESP(plr)
     addResource("ESP", plr.CharacterAdded:Connect(function(c) setupCharacterESP(plr,c) end))
     if plr.Character then task.defer(function() setupCharacterESP(plr,plr.Character) end) end
 end
-
 local function startESP()
     clearResources("ESP")
     ESPs={}
@@ -371,6 +380,7 @@ end
 local fovCircle = NewCircle()
 fovCircle.Radius = Config.FOVRadius
 fovCircle.Position = Vector2.new(Cam.ViewportSize.X/2,Cam.ViewportSize.Y/2)
+
 addResource("FOV",RunService.RenderStepped:Connect(function()
     fovCircle.Visible=Config.FOVCircle
     if not fovCircle.Visible then return end
@@ -383,7 +393,6 @@ addResource("FOV",RunService.RenderStepped:Connect(function()
         fovCircle.Color=Color3.fromRGB(255,255,255)
     end
 end))
-
 local DroppedESP = { items = {} }
 local KnownPlayerNames = {}
 
@@ -427,6 +436,7 @@ local function startDroppedItemsESP()
     addResource("DROPPED_ESP", Players.PlayerRemoving:Connect(function(p)
         KnownPlayerNames[p.Name] = true
     end))
+
     local function hookFolder(folder)
         if not folder then return end
         for _,child in ipairs(folder:GetChildren()) do trackModelIfMatches(child) end
@@ -434,6 +444,7 @@ local function startDroppedItemsESP()
             trackModelIfMatches(ch)
         end))
     end
+
     local folder = Workspace:FindFirstChild("DroppedItems")
     if folder then
         hookFolder(folder)
@@ -442,6 +453,7 @@ local function startDroppedItemsESP()
             if ch.Name == "DroppedItems" then hookFolder(ch) end
         end))
     end
+
     addResource("DROPPED_ESP", RunService.RenderStepped:Connect(function()
         if not Config.DroppedItemsESP then
             for _,d in pairs(DroppedESP.items) do d.Visible=false end
@@ -449,7 +461,7 @@ local function startDroppedItemsESP()
         end
         for m,d in pairs(DroppedESP.items) do
             local cf = m:GetPivot()
-            local v, on = Cam:WorldToViewportPoint(cf.Position)
+            local v,on = Cam:WorldToViewportPoint(cf.Position)
             if on then
                 d.Position = Vector2.new(v.X, v.Y - 12)
                 d.Visible = true
@@ -472,17 +484,20 @@ local function startLandmineESP()
     local aiZones = Workspace:FindFirstChild("AiZones")
     local folder = aiZones and aiZones:FindFirstChild("OutpostLandmines")
     if not folder then return end
+
     addResource("LANDMINE_ESP", RunService.RenderStepped:Connect(function()
         if not Config.ESP then
             for _,t in pairs(LandmineESP.items) do t.Visible=false end
             return
         end
+
         for m,t in pairs(LandmineESP.items) do
             if not m or not m.Parent then
                 if t.Remove then t:Remove() end
                 LandmineESP.items[m] = nil
             end
         end
+
         for _,m in ipairs(folder:GetChildren()) do
             if m:IsA("Model") and m.PrimaryPart then
                 if not LandmineESP.items[m] then
@@ -518,11 +533,12 @@ local function stopLandmineESP()
 end
 
 local Window = Rayfield:CreateWindow({
-    Name = "ESP & Aimbot Menu",
-    LoadingTitle = "ESP/Aimbot Loader",
-    LoadingSubtitle = "by Script",
+    Name = "ciganyok scriptje",
+    LoadingTitle = "Fuuu te milyne box? pow pow",
+    LoadingSubtitle = "silly autizm >_<",
     ConfigurationSaving = {Enabled = true, FolderName = "ESPUI", FileName = "Settings"},
     KeySystem = false
+    Theme = "Serenity"
 })
 
 local ESP_Tab = Window:CreateTab("ESP","eye")
@@ -564,7 +580,6 @@ ESP_Tab:CreateToggle({
         if v then startLandmineESP() else stopLandmineESP() end
     end
 })
-
 local INV_enabled=false
 local INV={bg=nil,lines={},dragging=false,offset=Vector2.new(),pos=Vector2.new(200,200)}
 
@@ -592,18 +607,29 @@ end
 
 ESP_Tab:CreateDivider()
 ESP_Tab:CreateLabel("Inventory Viewer")
+
 ESP_Tab:CreateToggle({
     Name="Inventory Viewer",
     CurrentValue=false,
     Flag="INV_View",
     Callback=function(v)
         INV_enabled=v
+        Config.InventoryViewer=v
         if not v then
             if INV.bg then INV.bg.Visible=false end
             for _,t in ipairs(INV.lines) do t.Visible=false end
         else
             ensureINV()
         end
+    end
+})
+
+ESP_Tab:CreateToggle({
+    Name="InDepth Mode",
+    CurrentValue=false,
+    Flag="INV_InDepth",
+    Callback=function(v)
+        Config.InventoryInDepth=v
     end
 })
 
@@ -622,6 +648,7 @@ ESP_Tab:CreateInput({
         Config.Friends=t
     end
 })
+
 ESP_Tab:CreateInput({
     Name="Friend Label Text",
     PlaceholderText="Friend",
@@ -629,13 +656,33 @@ ESP_Tab:CreateInput({
     Flag="ESP_FriendLabel",
     Callback=function(txt) Config.FriendLabel=txt end
 })
+
 ESP_Tab:CreateDivider()
-ESP_Tab:CreateColorPicker({Name="Text Color",Color=Config.TextColor,Flag="ESP_TextColor",Callback=function(c) Config.TextColor=c end})
-ESP_Tab:CreateColorPicker({Name="Box Color",Color=Config.BoxColor,Flag="ESP_BoxColor",Callback=function(c) Config.BoxColor=c end})
-ESP_Tab:CreateColorPicker({Name="Tracer Color",Color=Config.TracerColor,Flag="ESP_TracerColor",Callback=function(c) Config.TracerColor=c end})
+ESP_Tab:CreateColorPicker({
+    Name="Text Color",
+    Color=Config.TextColor,
+    Flag="ESP_TextColor",
+    Callback=function(c) Config.TextColor=c end
+})
+
+ESP_Tab:CreateColorPicker({
+    Name="Box Color",
+    Color=Config.BoxColor,
+    Flag="ESP_BoxColor",
+    Callback=function(c) Config.BoxColor=c end
+})
+
+ESP_Tab:CreateColorPicker({
+    Name="Tracer Color",
+    Color=Config.TracerColor,
+    Flag="ESP_TracerColor",
+    Callback=function(c) Config.TracerColor=c end
+})
 
 local AIM_Tab = Window:CreateTab("Aimbot","target")
+
 AIM_Tab:CreateDivider()
+
 AIM_Tab:CreateToggle({
     Name="Enable Aimbot (Right-click)",
     CurrentValue=false,
@@ -645,6 +692,7 @@ AIM_Tab:CreateToggle({
         if v then startAimbot() else stopAimbot() end
     end
 })
+
 AIM_Tab:CreateDropdown({
     Name="Lock Part",
     Options={"Head","Torso","HumanoidRootPart"},
@@ -652,6 +700,7 @@ AIM_Tab:CreateDropdown({
     Flag="AIM_Part",
     Callback=function(opt) Config.LockPart = type(opt)=="table" and opt[1] or opt end
 })
+
 AIM_Tab:CreateSlider({
     Name="Lock Strength",
     Range={0,1},
@@ -660,16 +709,54 @@ AIM_Tab:CreateSlider({
     Flag="AIM_Strength",
     Callback=function(v) Config.LockStrength=v end
 })
+
 AIM_Tab:CreateDivider()
-AIM_Tab:CreateToggle({Name="Show FOV Circle",CurrentValue=false,Flag="AIM_FOV",Callback=function(v) Config.FOVCircle=v end})
-AIM_Tab:CreateToggle({Name="Rainbow FOV",CurrentValue=false,Flag="AIM_FOVR",Callback=function(v) Config.FOVRainbow=v end})
-AIM_Tab:CreateSlider({Name="FOV Radius",Range={50,400},Increment=1,CurrentValue=Config.FOVRadius,Flag="AIM_FOVRad",Callback=function(v) Config.FOVRadius=v end})
+
+AIM_Tab:CreateToggle({
+    Name="Show FOV Circle",
+    CurrentValue=false,
+    Flag="AIM_FOV",
+    Callback=function(v) Config.FOVCircle=v end
+})
+
+AIM_Tab:CreateToggle({
+    Name="Rainbow FOV",
+    CurrentValue=false,
+    Flag="AIM_FOVR",
+    Callback=function(v) Config.FOVRainbow=v end
+})
+
+AIM_Tab:CreateSlider({
+    Name="FOV Radius",
+    Range={50,400},
+    Increment=1,
+    CurrentValue=Config.FOVRadius,
+    Flag="AIM_FOVRad",
+    Callback=function(v) Config.FOVRadius=v end
+})
 
 local EXTRA_Tab = Window:CreateTab("Extras","sparkles")
+
 EXTRA_Tab:CreateDivider()
-EXTRA_Tab:CreateToggle({Name="Fullbright",CurrentValue=false,Flag="EXTRA_Fullbright",Callback=function(v) Config.Fullbright=v toggleFullbright(v) end})
+
+EXTRA_Tab:CreateToggle({
+    Name="Fullbright",
+    CurrentValue=false,
+    Flag="EXTRA_Fullbright",
+    Callback=function(v)
+        Config.Fullbright=v
+        toggleFullbright(v)
+    end
+})
+
 EXTRA_Tab:CreateDivider()
-EXTRA_Tab:CreateToggle({Name="Stats Box (Drawing)",CurrentValue=false,Flag="EXTRA_StatsBox",Callback=function(v) Config.DrawStatsBox = v end})
+
+EXTRA_Tab:CreateToggle({
+    Name="Stats Box (Drawing)",
+    CurrentValue=false,
+    Flag="EXTRA_StatsBox",
+    Callback=function(v) Config.DrawStatsBox = v end
+})
 
 local statsBox = { lines = nil, text = nil, bg = nil }
 
@@ -758,7 +845,6 @@ local function toggleStatsBox(state)
         for _,l in ipairs(box) do l.Color = col l.Visible = true end
     end))
 end
-
 addResource("STATSBOX_UI", RunService.RenderStepped:Connect(function()
     if Config.DrawStatsBox then
         toggleStatsBox(true)
@@ -783,58 +869,98 @@ addResource("DROPPED_ESP_DISTANCE", RunService.RenderStepped:Connect(function()
 end))
 
 local function drawInventory(plr)
-    local folder=ReplicatedStorage:FindFirstChild("Players")
+    local folder = ReplicatedStorage:FindFirstChild("Players")
     if not folder then return end
-    local pf=folder:FindFirstChild(plr.Name)
+    local pf = folder:FindFirstChild(plr.Name)
     if not pf or not pf:FindFirstChild("Inventory") then
         if INV.bg then INV.bg.Visible=false end
         for _,t in ipairs(INV.lines) do t.Visible=false end
         return
     end
-    local inv=pf.Inventory
-    local slots={"ItemBack1","ItemBack2","ItemHip1"}
-    local display={"Inventory: "..plr.Name}
-    for _,slotName in ipairs(slots) do
-        for _,obj in ipairs(inv:GetChildren()) do
-            if obj:IsA("ObjectValue") and obj:GetAttribute("Slot")==slotName then
-                local name=obj.Name
-                local dur=obj:GetAttribute("Durability")
-                local max=obj:GetAttribute("MaxDurability")
-                if max and dur and dur<=0 then
-                    name=name.." [BROKE]"
+
+    local inv = pf.Inventory
+    local display = {}
+
+    if not Config.InventoryInDepth then
+        table.insert(display, plr.Name)
+        local slots = {"ItemBack1","ItemBack2","ItemHip1"}
+        for _,slot in ipairs(slots) do
+            for _,obj in ipairs(inv:GetChildren()) do
+                if obj:IsA("ObjectValue") and obj:GetAttribute("Slot")==slot then
+                    local name=obj.Name
+                    local d=obj:GetAttribute("Durability")
+                    local m=obj:GetAttribute("MaxDurability")
+                    if m and d and d<=0 then name=name.." [BROKE]" end
+                    table.insert(display,name)
+                    break
                 end
-                table.insert(display,name)
-                break
             end
         end
+    else
+        table.insert(display, plr.Name)
+
+        for _,obj in ipairs(inv:GetChildren()) do
+            if obj:IsA("ObjectValue") then
+                table.insert(display,obj.Name)
+            end
+        end
+
+        local map = {
+            ClothingHeadware="Helm",
+            ClothingBackpack="Bag",
+            ClothingChestRig="Rig",
+            ClothingPants="Pants",
+            ClothingShirt="Shirt"
+        }
+
+        for slot,label in pairs(map) do
+            local found="None"
+            for _,obj in ipairs(inv:GetChildren()) do
+                if obj:IsA("ObjectValue") and obj:GetAttribute("Slot")==slot then
+                    found=obj.Name
+                    break
+                end
+            end
+            table.insert(display, label..": "..found)
+        end
     end
+
     local count=#display
     if count==0 then
         if INV.bg then INV.bg.Visible=false end
         for _,t in ipairs(INV.lines) do t.Visible=false end
         return
     end
+
     local x,y=INV.pos.X,INV.pos.Y
-    local w,h=260,40+count*22
+    local h = 30 + count*22
+    local w = 260
+
     INV.bg.Position=Vector2.new(x,y)
     INV.bg.Size=Vector2.new(w,h)
     INV.bg.Visible=true
-    for i=#INV.lines+1,count do table.insert(INV.lines,makeText(18)) end
+
+    if #INV.lines < count then
+        for i=#INV.lines+1,count do
+            table.insert(INV.lines, makeText(18))
+        end
+    end
+
     for i,t in ipairs(INV.lines) do
         if i<=count then
-            local txt=display[i]
+            local txt = display[i]
             if txt:find("%[BROKE%]") then
-                t.Color=Color3.fromRGB(255,50,50)
+                t.Color = Color3.fromRGB(255,50,50)
             elseif i==1 then
-                t.Color=Color3.fromRGB(0,255,255)
+                t.Color = Color3.fromRGB(0,255,255)
             else
-                t.Color=Color3.new(1,1,1)
+                t.Color = Color3.new(1,1,1)
             end
-            t.Text=txt
-            t.Position=Vector2.new(x+15,y+25+i*20)
-            t.Visible=true
+            t.Text = txt
+            t.Position = Vector2.new(x+10, y+10 + i*20)
+            t.Visible = true
         else
-            t.Visible=false
+            t.Visible = false
         end
     end
 end
@@ -843,45 +969,71 @@ RunService.RenderStepped:Connect(function()
     if not INV_enabled then return end
     ensureINV()
     local mouse=LP:GetMouse()
+
     if UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
         local mpos=Vector2.new(mouse.X,mouse.Y)
-        if not INV.dragging and INV.bg.Visible and mpos.X>=INV.pos.X and mpos.X<=INV.pos.X+280 and mpos.Y>=INV.pos.Y and mpos.Y<=INV.pos.Y+120 then
+        if not INV.dragging and INV.bg.Visible and
+           mpos.X>=INV.pos.X and mpos.X<=INV.pos.X+280 and
+           mpos.Y>=INV.pos.Y and mpos.Y<=INV.pos.Y+200 then
             INV.dragging=true
             INV.offset=mpos-INV.pos
         end
-        if INV.dragging then INV.pos=mpos-INV.offset end
+        if INV.dragging then
+            INV.pos=mpos-INV.offset
+        end
     else
         INV.dragging=false
     end
+
     local origin=Cam.CFrame.Position
     local dir=(mouse.Hit.Position-origin).Unit
     local closest=nil
     local minDist=2
+
     for _,p in ipairs(Players:GetPlayers()) do
-        if p==LP or not p.Character then continue end
-        local root=p.Character:FindFirstChild("HumanoidRootPart")
-        local hum=p.Character:FindFirstChildOfClass("Humanoid")
-        if root and hum then
-            local rel=root.Position-origin
-            local proj=rel:Dot(dir)
-            if proj>0 then
-                local closestPoint=origin+(dir*proj)
-                local dist=(root.Position-closestPoint).Magnitude
-                if dist<minDist then
-                    minDist=dist
-                    closest=p
+        if p~=LP and p.Character then
+            local root=p.Character:FindFirstChild("HumanoidRootPart")
+            local hum=p.Character:FindFirstChildOfClass("Humanoid")
+            if root and hum then
+                local rel=root.Position-origin
+                local proj=rel:Dot(dir)
+                if proj>0 then
+                    local cp=origin+(dir*proj)
+                    local dist=(root.Position-cp).Magnitude
+                    if dist<minDist then
+                        minDist=dist
+                        closest=p
+                    end
                 end
             end
         end
     end
+
     if not closest then
         if INV.bg then INV.bg.Visible=false end
         for _,t in ipairs(INV.lines) do t.Visible=false end
         return
     end
+
     drawInventory(closest)
 end)
 local kisfiu_Tab = Window:CreateTab("kisfiu","eye")
+
+local ZoomEnabled = false
+local ZoomFOV = 50
+local SavedFOV = nil
+local Zooming = false
+
+local function getGameplaySettings()
+    local playersFolder = ReplicatedStorage:FindFirstChild("Players")
+    if not playersFolder then return nil end
+    local plrFolder = playersFolder:FindFirstChild(LP.Name)
+    if not plrFolder then return nil end
+    local settings = plrFolder:FindFirstChild("Settings")
+    if not settings then return nil end
+    local g = settings:FindFirstChild("GameplaySettings")
+    return g
+end
 
 kisfiu_Tab:CreateSlider({
     Name = "FOV",
@@ -890,13 +1042,75 @@ kisfiu_Tab:CreateSlider({
     CurrentValue = 70,
     Flag = "kisfiu_FOV",
     Callback = function(v)
-        local plrFolder = ReplicatedStorage:WaitForChild("Players"):FindFirstChild(LP.Name)
-        if not plrFolder then return end
-        local settings = plrFolder:WaitForChild("Settings")
-        local g = settings:WaitForChild("GameplaySettings")
-        g:SetAttribute("DefaultFOV",v)
+        local g = getGameplaySettings()
+        if not g then return end
+        g:SetAttribute("DefaultFOV", v)
+        if not Zooming then
+            SavedFOV = v
+        end
     end
 })
+
+kisfiu_Tab:CreateSlider({
+    Name = "Zoom FOV (MB2)",
+    Range = {30,90},
+    Increment = 1,
+    CurrentValue = 50,
+    Flag = "kisfiu_ZoomFOV",
+    Callback = function(v)
+        ZoomFOV = v
+    end
+})
+
+kisfiu_Tab:CreateToggle({
+    Name = "Enable Zoom on MB2",
+    CurrentValue = false,
+    Flag = "kisfiu_ZoomToggle",
+    Callback = function(v)
+        ZoomEnabled = v
+        if not v and Zooming then
+            Zooming = false
+            local g = getGameplaySettings()
+            if g and SavedFOV then
+                g:SetAttribute("DefaultFOV", SavedFOV)
+            end
+        end
+    end
+})
+
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        if not ZoomEnabled then return end
+        if Zooming then return end
+        Zooming = true
+        local g = getGameplaySettings()
+        if not g then return end
+        SavedFOV = g:GetAttribute("DefaultFOV") or SavedFOV or 70
+        g:SetAttribute("DefaultFOV", ZoomFOV)
+    end
+end)
+
+UIS.InputEnded:Connect(function(input, gp)
+    if gp then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        if not Zooming then return end
+        Zooming = false
+        local g = getGameplaySettings()
+        if g and SavedFOV then
+            g:SetAttribute("DefaultFOV", SavedFOV)
+        end
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if not ZoomEnabled or not Zooming then return end
+    local g = getGameplaySettings()
+    if not g then return end
+    if g:GetAttribute("DefaultFOV") ~= ZoomFOV then
+        g:SetAttribute("DefaultFOV", ZoomFOV)
+    end
+end)
 
 local function getEquippedGun()
     local char = LP.Character
@@ -937,7 +1151,7 @@ end
 
 local function applySkinToBoth(gunInstance, skin)
     if not gunInstance or not skin then return end
-    
+
     local props = gunInstance:FindFirstChild("ItemProperties")
     if not props then
         props = Instance.new("Folder")
@@ -997,7 +1211,7 @@ local Skin_DD = EXTRA_Tab:CreateDropdown({
 
 local function getSavedSkin(gun)
     if not gun then return nil end
-    
+
     local props = gun:FindFirstChild("ItemProperties")
     if props and props:GetAttribute("Skin") then
         return props:GetAttribute("Skin")
@@ -1019,7 +1233,7 @@ end
 
 local function updateEquippedWeaponUI()
     equippedGun = getEquippedGun()
-    
+
     local name = equippedGun and getWeaponDisplayName(equippedGun) or "No weapon"
     local wOpts = {name}
 
@@ -1050,7 +1264,6 @@ RunService.Heartbeat:Connect(function()
         updateEquippedWeaponUI()
     end
 end)
-
 local descPool = {
     "cigany killer",
     "king von's most favoured gun",
