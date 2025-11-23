@@ -537,9 +537,10 @@ local Window = Rayfield:CreateWindow({
     LoadingTitle = "Fuuu te milyne box? pow pow",
     LoadingSubtitle = "silly autizm >_<",
     ConfigurationSaving = {Enabled = true, FolderName = "ESPUI", FileName = "Settings"},
-    KeySystem = false
+    KeySystem = false,
     Theme = "Serenity"
 })
+
 
 local ESP_Tab = Window:CreateTab("ESP","eye")
 
